@@ -2,20 +2,18 @@ Attribute VB_Name = "県市切替"
 '==================================================================
 '  県/市シート 自動表示切替マクロ
 '  ────────────────────────────────────────────────
-'  最初のシート「施工計画書（はじめに記入）」のD3セルに
+'  最初のシート「施工計画書（はじめに記入）」の D3 セルに
 '  ▼ドロップダウンで「県」または「市」を選ぶと、
 '  下で指定したシートが自動で 表示/非表示 されます。
 '
-'  【取り込み手順】
-'  1) Excelで対象ブックを開き Alt+F11 で VBE を開く
-'  2) メニュー「ファイル」→「ファイルのインポート」で
-'     この 県市切替マクロ.bas を選択
-'  3) プロジェクト内の「Sheet1 (施工計画書（はじめに記入）)」を
-'     ダブルクリックして開き、末尾に下の Worksheet_Change を貼り付け
-'  4) VBE のイミディエイトウィンドウ (Ctrl+G) で
-'        Call 初期設定
-'     と入力して Enter を押す（D3に▼が付きます）
-'  5) ブックを「マクロ有効ブック (.xlsm) または .xls」で保存
+'  ─ 取り込み手順（たった2ステップ） ─
+'   ① Excelで対象ブックを開き Alt+F11 → メニュー「ファイル」
+'      →「ファイルのインポート」で この 県市切替マクロ.bas を選択
+'   ② Excel側に戻り、Alt+F8 で「初期設定」を選んで実行
+'        （またはVBEのイミディエイトウィンドウで Call 初期設定）
+'
+'   ★ ②で「VBAプロジェクトへのアクセス信頼設定」が必要な場合は
+'     画面の指示に従って一度だけ設定してください。
 '==================================================================
 Option Explicit
 
@@ -62,14 +60,19 @@ End Function
 
 
 '==================================================================
-'  ▼ 初期設定（D3にドロップダウンを付ける。一度だけ実行）
+'  ▼ 初期設定 — 一度だけ実行してください
+'    (1) 最初のシートのD3にドロップダウン(県/市)を設置
+'    (2) 最初のシートの Worksheet_Change イベントを自動で書き込み
 '==================================================================
 Public Sub 初期設定()
     Dim sh As Worksheet
     Set sh = ThisWorkbook.Worksheets(1)   ' 最初のシート
 
+    ' --- (1) D3 に「県/市」のドロップダウンを設定 ---
+    On Error Resume Next
+    sh.Range(入力セル).Validation.Delete
+    On Error GoTo 0
     With sh.Range(入力セル).Validation
-        .Delete
         .Add Type:=xlValidateList, _
              AlertStyle:=xlValidAlertStop, _
              Operator:=xlBetween, _
@@ -81,10 +84,71 @@ Public Sub 初期設定()
         .ShowError = True
     End With
 
-    MsgBox "セットアップ完了！" & vbCrLf & _
-           "「" & sh.Name & "」シートの " & 入力セル & " で「県/市」を選択してください。", _
-           vbInformation
+    ' --- (2) Worksheet_Change イベントをシートモジュールに自動追加 ---
+    Dim 結果 As String
+    結果 = イベントコード書込(sh)
+
+    Dim msg As String
+    msg = "▼ ドロップダウン設置: 完了 (" & sh.Name & "!" & 入力セル & ")" & vbCrLf
+    msg = msg & "▼ 自動切替イベント: " & 結果 & vbCrLf & vbCrLf
+    msg = msg & "→ D3 の▼から「県」または「市」を選んでください。"
+    MsgBox msg, vbInformation, "セットアップ"
 End Sub
+
+
+'------------------------------------------------------------------
+'  シートモジュールに Worksheet_Change を書き込む
+'   ※ VBAプロジェクトへのアクセス許可がないと例外になる
+'      その場合は手動貼付の手順をメッセージで案内する
+'------------------------------------------------------------------
+Private Function イベントコード書込(ByVal sh As Worksheet) As String
+    Dim VBProj As Object, VBComp As Object, CodeMod As Object
+    Dim コード As String, 行 As Long
+
+    コード = "Private Sub Worksheet_Change(ByVal Target As Range)" & vbCrLf & _
+            "    If Intersect(Target, Me.Range(""" & 入力セル & """)) Is Nothing Then Exit Sub" & vbCrLf & _
+            "    If Target.Cells.CountLarge > 1 Then Exit Sub" & vbCrLf & _
+            "    県市シート切替 CStr(Target.Value)" & vbCrLf & _
+            "End Sub"
+
+    On Error GoTo TrustNG
+    Set VBProj = ThisWorkbook.VBProject
+    Set VBComp = VBProj.VBComponents(sh.CodeName)
+    Set CodeMod = VBComp.CodeModule
+
+    ' すでに同じ手続きがあれば消してから挿入
+    On Error Resume Next
+    Dim 既存 As Long
+    既存 = CodeMod.ProcStartLine("Worksheet_Change", 0)
+    If 既存 > 0 Then
+        Dim 行数 As Long
+        行数 = CodeMod.ProcCountLines("Worksheet_Change", 0)
+        CodeMod.DeleteLines 既存, 行数
+    End If
+    On Error GoTo TrustNG
+
+    行 = CodeMod.CountOfLines + 1
+    CodeMod.InsertLines 行, コード
+    イベントコード書込 = "完了（自動）"
+    Exit Function
+
+TrustNG:
+    ' VBAプロジェクトへの信頼アクセスが無効 → 手動貼付の案内
+    MsgBox "Excelの設定で『VBAプロジェクトへのアクセスを信頼する』を" & vbCrLf & _
+           "有効化する必要があります。" & vbCrLf & vbCrLf & _
+           "  [ファイル]→[オプション]→[トラストセンター]" & vbCrLf & _
+           "  →[トラストセンターの設定]→[マクロの設定]" & vbCrLf & _
+           "  →『VBAプロジェクト オブジェクト モデルへのアクセスを信頼する』にチェック" & vbCrLf & vbCrLf & _
+           "設定後、再度『初期設定』マクロを実行してください。" & vbCrLf & vbCrLf & _
+           "── 手動で貼り付ける場合 ──" & vbCrLf & _
+           "VBEで Sheet1 (" & sh.Name & ") を開き、以下を貼り付けてください:" & vbCrLf & vbCrLf & _
+           "Private Sub Worksheet_Change(ByVal Target As Range)" & vbCrLf & _
+           "    If Intersect(Target, Me.Range(""D3"")) Is Nothing Then Exit Sub" & vbCrLf & _
+           "    If Target.Cells.CountLarge > 1 Then Exit Sub" & vbCrLf & _
+           "    県市シート切替 CStr(Target.Value)" & vbCrLf & _
+           "End Sub", vbExclamation, "VBA信頼アクセスが必要です"
+    イベントコード書込 = "未設定（上記の案内を参照）"
+End Function
 
 
 '==================================================================
@@ -144,17 +208,3 @@ Private Function 表示中シート数() As Long
     Next sh
     表示中シート数 = c
 End Function
-
-
-'==================================================================
-'  【シートモジュール用イベント】
-'  ────────────────────────────────────────────────
-'  ※ 下のコードは「標準モジュール」ではなく、
-'    Sheet1（施工計画書（はじめに記入））のコードに貼り付けます。
-'
-' Private Sub Worksheet_Change(ByVal Target As Range)
-'     If Intersect(Target, Me.Range("D3")) Is Nothing Then Exit Sub
-'     If Target.Cells.CountLarge > 1 Then Exit Sub
-'     県市シート切替 CStr(Target.Value)
-' End Sub
-'==================================================================
