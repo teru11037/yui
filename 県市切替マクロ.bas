@@ -17,7 +17,10 @@ Attribute VB_Name = "県市切替"
 '==================================================================
 Option Explicit
 
-' 入力セル（最初のシートのこのセルが切替トリガー）
+' 入力シート（最初のシート＝この名前のシートを対象とする）
+Private Const 入力シート名 As String = "施工計画書（はじめに記入）"
+
+' 入力セル（上記シートのこのセルが切替トリガー）
 Private Const 入力セル As String = "D3"
 
 
@@ -66,7 +69,15 @@ End Function
 '==================================================================
 Public Sub 初期設定()
     Dim sh As Worksheet
-    Set sh = ThisWorkbook.Worksheets(1)   ' 最初のシート
+    On Error Resume Next
+    Set sh = ThisWorkbook.Worksheets(入力シート名)
+    On Error GoTo 0
+    If sh Is Nothing Then
+        MsgBox "対象シート「" & 入力シート名 & "」が見つかりません。" & vbCrLf & _
+               "シート名を確認するか、定数『入力シート名』を実際のシート名に合わせて変更してください。", _
+               vbExclamation, "シートが見つかりません"
+        Exit Sub
+    End If
 
     ' --- (1) D3 に「県/市」のドロップダウンを設定 ---
     On Error Resume Next
@@ -107,7 +118,7 @@ Private Function イベントコード書込(ByVal sh As Worksheet) As String
 
     コード = "Private Sub Worksheet_Change(ByVal Target As Range)" & vbCrLf & _
             "    If Intersect(Target, Me.Range(""" & 入力セル & """)) Is Nothing Then Exit Sub" & vbCrLf & _
-            "    If Target.Cells.CountLarge > 1 Then Exit Sub" & vbCrLf & _
+            "    If Target.Cells.Count > 1 Then Exit Sub" & vbCrLf & _
             "    県市シート切替 CStr(Target.Value)" & vbCrLf & _
             "End Sub"
 
@@ -133,23 +144,42 @@ Private Function イベントコード書込(ByVal sh As Worksheet) As String
     Exit Function
 
 TrustNG:
-    ' VBAプロジェクトへの信頼アクセスが無効 → 手動貼付の案内
-    MsgBox "Excelの設定で『VBAプロジェクトへのアクセスを信頼する』を" & vbCrLf & _
-           "有効化する必要があります。" & vbCrLf & vbCrLf & _
+    ' Worksheet_Change の自動書込みに失敗 → 原因を断定せず情報提示
+    Dim エラー番号 As Long, エラー説明 As String
+    エラー番号 = Err.Number
+    エラー説明 = Err.Description
+    MsgBox "Worksheet_Change イベントの自動書込みに失敗しました。" & vbCrLf & _
+           "エラー番号: " & エラー番号 & vbCrLf & _
+           "詳細: " & エラー説明 & vbCrLf & vbCrLf & _
+           "原因として多いのは『VBAプロジェクト オブジェクト モデルへのアクセスを信頼する』" & vbCrLf & _
+           "が無効な場合です。以下を確認してください:" & vbCrLf & _
            "  [ファイル]→[オプション]→[トラストセンター]" & vbCrLf & _
            "  →[トラストセンターの設定]→[マクロの設定]" & vbCrLf & _
            "  →『VBAプロジェクト オブジェクト モデルへのアクセスを信頼する』にチェック" & vbCrLf & vbCrLf & _
-           "設定後、再度『初期設定』マクロを実行してください。" & vbCrLf & vbCrLf & _
-           "── 手動で貼り付ける場合 ──" & vbCrLf & _
-           "VBEで Sheet1 (" & sh.Name & ") を開き、以下を貼り付けてください:" & vbCrLf & vbCrLf & _
+           "上記を確認しても解決しない場合は、以下を Sheet1 (" & sh.Name & ") に" & vbCrLf & _
+           "手動で貼り付けてください:" & vbCrLf & vbCrLf & _
            "Private Sub Worksheet_Change(ByVal Target As Range)" & vbCrLf & _
            "    If Intersect(Target, Me.Range(""D3"")) Is Nothing Then Exit Sub" & vbCrLf & _
-           "    If Target.Cells.CountLarge > 1 Then Exit Sub" & vbCrLf & _
+           "    If Target.Cells.Count > 1 Then Exit Sub" & vbCrLf & _
            "    県市シート切替 CStr(Target.Value)" & vbCrLf & _
-           "End Sub", vbExclamation, "VBA信頼アクセスが必要です"
+           "End Sub", vbExclamation, "イベント書込みに失敗"
     イベントコード書込 = "未設定（上記の案内を参照）"
 End Function
 
+
+'------------------------------------------------------------------
+'  入力値の正規化
+'   半角/全角スペース・改行・タブを除去して比較しやすくする
+'------------------------------------------------------------------
+Private Function 値正規化(ByVal 値 As String) As String
+    Dim s As String
+    s = 値
+    s = Replace(s, vbCr, "")
+    s = Replace(s, vbLf, "")
+    s = Replace(s, vbTab, "")
+    s = Replace(s, "　", "")  ' 全角スペース
+    値正規化 = Trim$(s)
+End Function
 
 '==================================================================
 '  ▼ 切替本体（基本的に編集不要）
@@ -159,7 +189,7 @@ Public Sub 県市シート切替(ByVal 値 As String)
 
     Dim 表示 As Variant, 非表示 As Variant
 
-    Select Case Trim$(値)
+    Select Case 値正規化(値)
         Case "県"
             表示 = 県シート一覧()
             非表示 = 市シート一覧()
