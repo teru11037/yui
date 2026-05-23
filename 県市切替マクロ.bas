@@ -2,7 +2,7 @@ Attribute VB_Name = "県市切替"
 '==================================================================
 '  県/市シート 自動表示切替マクロ
 '  ────────────────────────────────────────────────
-'  最初のシート「施工計画書（はじめに記入）」の D3 セルに
+'  入力シート「施工計画書（はじめに記入）」の D3 セルに
 '  ▼ドロップダウンで「県」または「市」を選ぶと、
 '  下で指定したシートが自動で 表示/非表示 されます。
 '
@@ -17,7 +17,7 @@ Attribute VB_Name = "県市切替"
 '==================================================================
 Option Explicit
 
-' 入力シート（最初のシート＝この名前のシートを対象とする）
+' 入力シート（この名前のシートを対象とする）
 Private Const 入力シート名 As String = "施工計画書（はじめに記入）"
 
 ' 入力セル（上記シートのこのセルが切替トリガー）
@@ -64,8 +64,8 @@ End Function
 
 '==================================================================
 '  ▼ 初期設定 ― 一度だけ実行してください
-'    (1) 最初のシートのD3にドロップダウン(県/市)を設置
-'    (2) 最初のシートの Worksheet_Change イベントを自動で書き込み
+'    (1) 入力シートのD3にドロップダウン(県/市)を設置
+'    (2) 入力シートの Worksheet_Change イベントを自動で書き込み
 '==================================================================
 Public Sub 初期設定()
     Dim sh As Worksheet
@@ -77,6 +77,21 @@ Public Sub 初期設定()
                "シート名を確認するか、定数『入力シート名』を実際のシート名に合わせて変更してください。", _
                vbExclamation, "シートが見つかりません"
         Exit Sub
+    End If
+
+    ' --- (0) H3:K30 に既存データがあれば上書き確認（既存ナビは除外） ---
+    Dim ナビ領域 As Range
+    Set ナビ領域 = sh.Range("H3:K30")
+    If Application.WorksheetFunction.CountA(ナビ領域) > 0 Then
+        If CStr(sh.Range("H3").Value) <> "提出書類ナビ" Then
+            If MsgBox("入力シートの H3:K30 に既存データがあります。" & vbCrLf & _
+                      "このマクロは H3:K30 を『提出書類ナビ』用に使うため、" & vbCrLf & _
+                      "切替の度に上書きされます。" & vbCrLf & vbCrLf & _
+                      "セットアップを続行しますか？", _
+                      vbYesNo + vbExclamation, "H3:K30 上書きの確認") <> vbYes Then
+                Exit Sub
+            End If
+        End If
     End If
 
     ' --- (1) D3 に「県/市」のドロップダウンを設定 ---
@@ -276,6 +291,11 @@ Public Sub 設定チェック()
         問題 = 問題 & "・県/市 両方の一覧に存在するシート:" & vbCrLf & 重複
     End If
 
+    ' (7) 入力シートの Worksheet_Change イベント確認
+    If Not 入力sh Is Nothing Then
+        問題 = 問題 & イベント存在確認(入力sh)
+    End If
+
     ' 結果表示
     If Len(問題) = 0 Then
         MsgBox "設定チェック完了。問題は見つかりませんでした。", vbInformation, "設定チェック"
@@ -283,6 +303,47 @@ Public Sub 設定チェック()
         MsgBox "以下の問題が見つかりました:" & vbCrLf & vbCrLf & 問題, vbExclamation, "設定チェック"
     End If
 End Sub
+
+'------------------------------------------------------------------
+'  入力シートの Worksheet_Change イベントを VBProject 経由で確認
+'   戻り値: 問題があればその記述（複数行可）、無ければ ""
+'   VBProject にアクセスできない場合は『未確認』として警告に含める
+'------------------------------------------------------------------
+Private Function イベント存在確認(ByVal sh As Worksheet) As String
+    Dim VBProj As Object, VBComp As Object, CodeMod As Object
+    Dim 開始 As Long, 行数 As Long, 本文 As String
+    Dim 結果 As String
+
+    On Error GoTo TrustNG
+    Set VBProj = ThisWorkbook.VBProject
+    Set VBComp = VBProj.VBComponents(sh.CodeName)
+    Set CodeMod = VBComp.CodeModule
+
+    On Error Resume Next
+    開始 = CodeMod.ProcStartLine("Worksheet_Change", 0)
+    Err.Clear
+    On Error GoTo TrustNG
+
+    If 開始 <= 0 Then
+        結果 = "・入力シートに Worksheet_Change イベントが見つかりません。『初期設定』を再実行してください。" & vbCrLf
+    Else
+        On Error Resume Next
+        行数 = CodeMod.ProcCountLines("Worksheet_Change", 0)
+        本文 = CodeMod.Lines(開始, 行数)
+        Err.Clear
+        On Error GoTo TrustNG
+        If InStr(本文, "県市シート切替") = 0 Then
+            結果 = "・Worksheet_Change イベント内に 県市シート切替 の呼び出しが見つかりません。" & vbCrLf
+        End If
+    End If
+
+    イベント存在確認 = 結果
+    Exit Function
+
+TrustNG:
+    イベント存在確認 = "・Worksheet_Change の確認に失敗（Err " & Err.Number & ": " & Err.Description & "）。" & vbCrLf & _
+                      "    『VBA プロジェクト オブジェクト モデルへのアクセスを信頼する』が無効の可能性があります（イベント有無は未確認）。" & vbCrLf
+End Function
 
 
 '==================================================================
