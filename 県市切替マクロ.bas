@@ -206,8 +206,21 @@ Public Sub 県市シート切替(ByVal 値 As String)
     Application.ScreenUpdating = False
     Application.EnableEvents = False
 
-    シート表示切替 表示, True
-    シート表示切替 非表示, False
+    ' (1) 表示対象を先にすべて可視化（hide 前にカウントを確定させる）
+    Call シート表示(表示)
+
+    ' (2) 非表示後に最低1枚の可視シートが残るかを一括判定
+    Dim 可視前 As Long, 非表示見込 As Long
+    可視前 = 表示中シート数()
+    非表示見込 = 非表示有効数(非表示)
+    If 可視前 - 非表示見込 < 1 Then
+        MsgBox "全シートが非表示になってしまうため、切替を中断しました。" & vbCrLf & _
+               "県/市シート一覧の設定を確認してください。", vbExclamation, "切替中断"
+        GoTo CleanExit
+    End If
+
+    ' (3) 非表示対象を hide（入力シートは常に保護）
+    Call シート非表示(非表示)
 
 CleanExit:
     Application.EnableEvents = True
@@ -219,25 +232,56 @@ CleanFail:
     Resume CleanExit
 End Sub
 
-Private Sub シート表示切替(ByVal 名前一覧 As Variant, ByVal 表示する As Boolean)
-    Dim i As Long, sh As Worksheet
+' 名前一覧 のシートを可視化。戻り値は未検出シート数。
+Private Function シート表示(ByVal 名前一覧 As Variant) As Long
+    Dim i As Long, sh As Worksheet, 未検出 As Long
+    For i = LBound(名前一覧) To UBound(名前一覧)
+        Set sh = Nothing
+        On Error Resume Next
+        Set sh = ThisWorkbook.Worksheets(CStr(名前一覧(i)))
+        On Error GoTo 0
+        If sh Is Nothing Then
+            未検出 = 未検出 + 1
+        Else
+            sh.Visible = xlSheetVisible
+        End If
+    Next i
+    シート表示 = 未検出
+End Function
+
+' 名前一覧 のシートを非表示化。入力シート(入力シート名)は常に保護。戻り値は未検出シート数。
+Private Function シート非表示(ByVal 名前一覧 As Variant) As Long
+    Dim i As Long, sh As Worksheet, 未検出 As Long
+    For i = LBound(名前一覧) To UBound(名前一覧)
+        Set sh = Nothing
+        On Error Resume Next
+        Set sh = ThisWorkbook.Worksheets(CStr(名前一覧(i)))
+        On Error GoTo 0
+        If sh Is Nothing Then
+            未検出 = 未検出 + 1
+        ElseIf sh.Name <> 入力シート名 Then
+            sh.Visible = xlSheetHidden
+        End If
+    Next i
+    シート非表示 = 未検出
+End Function
+
+' 非表示候補のうち、実在しかつ入力シートでなく かつ 現在可視 のシート数
+Private Function 非表示有効数(ByVal 名前一覧 As Variant) As Long
+    Dim i As Long, sh As Worksheet, c As Long
     For i = LBound(名前一覧) To UBound(名前一覧)
         Set sh = Nothing
         On Error Resume Next
         Set sh = ThisWorkbook.Worksheets(CStr(名前一覧(i)))
         On Error GoTo 0
         If Not sh Is Nothing Then
-            If 表示する Then
-                sh.Visible = xlSheetVisible
-            Else
-                ' 最後の1枚を非表示にしようとするとエラーになるので保護
-                If 表示中シート数() > 1 Then
-                    sh.Visible = xlSheetHidden
-                End If
+            If sh.Name <> 入力シート名 And sh.Visible = xlSheetVisible Then
+                c = c + 1
             End If
         End If
     Next i
-End Sub
+    非表示有効数 = c
+End Function
 
 Private Function 表示中シート数() As Long
     Dim sh As Worksheet, c As Long
