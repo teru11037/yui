@@ -99,10 +99,18 @@ Public Sub 初期設定()
     Dim 結果 As String
     結果 = イベントコード書込(sh)
 
+    ' D3 が既に県/市なら ナビも初回生成
+    Dim 現値 As String
+    現値 = 値正規化(CStr(sh.Range(入力セル).Value))
+    If 現値 = "県" Or 現値 = "市" Then
+        ナビ再生成 現値
+    End If
+
     Dim msg As String
     msg = "▼ ドロップダウン設置: 完了 (" & sh.Name & "!" & 入力セル & ")" & vbCrLf
     msg = msg & "▼ 自動切替イベント: " & 結果 & vbCrLf & vbCrLf
-    msg = msg & "→ D3 の▼から「県」または「市」を選んでください。"
+    msg = msg & "→ D3 の▼から「県」または「市」を選んでください。" & vbCrLf & vbCrLf
+    msg = msg & "（提出前・配布前に、Alt+F8 から『設定チェック』を実行してシート設定の妥当性を確認してください）"
     MsgBox msg, vbInformation, "セットアップ"
 End Sub
 
@@ -182,6 +190,160 @@ Private Function 値正規化(ByVal 値 As String) As String
 End Function
 
 '==================================================================
+'  ▼ 設定チェック ― 提出前/配布前に実行して設定の妥当性を確認
+'==================================================================
+Public Sub 設定チェック()
+    Dim 問題 As String
+    Dim 入力sh As Worksheet
+    Dim sh As Worksheet
+    Dim i As Long, j As Long
+
+    ' (1) 入力シートの存在
+    On Error Resume Next
+    Set 入力sh = ThisWorkbook.Worksheets(入力シート名)
+    On Error GoTo 0
+    If 入力sh Is Nothing Then
+        問題 = 問題 & "・入力シート「" & 入力シート名 & "」が存在しません。" & vbCrLf
+    Else
+        ' (2) 入力セル と その値
+        Dim セル As Range
+        On Error Resume Next
+        Set セル = 入力sh.Range(入力セル)
+        On Error GoTo 0
+        If セル Is Nothing Then
+            問題 = 問題 & "・入力セル「" & 入力セル & "」が解釈できません。" & vbCrLf
+        Else
+            Dim 値 As String
+            値 = 値正規化(CStr(セル.Value))
+            Select Case 値
+                Case "", "県", "市"
+                    ' OK
+                Case Else
+                    問題 = 問題 & "・入力セル " & 入力セル & " の値「" & セル.Value & _
+                             "」が想定外です（空欄/県/市 のいずれかにしてください）。" & vbCrLf
+            End Select
+        End If
+
+        ' (6) 入力シートが表示状態か
+        If 入力sh.Visible <> xlSheetVisible Then
+            問題 = 問題 & "・入力シート「" & 入力シート名 & "」が非表示です。表示状態にしてください。" & vbCrLf
+        End If
+    End If
+
+    ' (3) 県シート一覧 の存在チェック
+    Dim 県名 As Variant, 県不在 As String
+    県名 = 県シート一覧()
+    For i = LBound(県名) To UBound(県名)
+        Set sh = Nothing
+        On Error Resume Next
+        Set sh = ThisWorkbook.Worksheets(CStr(県名(i)))
+        On Error GoTo 0
+        If sh Is Nothing Then
+            県不在 = 県不在 & "    " & CStr(県名(i)) & vbCrLf
+        End If
+    Next i
+    If Len(県不在) > 0 Then
+        問題 = 問題 & "・県シート一覧 に実在しないシート:" & vbCrLf & 県不在
+    End If
+
+    ' (4) 市シート一覧 の存在チェック
+    Dim 市名 As Variant, 市不在 As String
+    市名 = 市シート一覧()
+    For i = LBound(市名) To UBound(市名)
+        Set sh = Nothing
+        On Error Resume Next
+        Set sh = ThisWorkbook.Worksheets(CStr(市名(i)))
+        On Error GoTo 0
+        If sh Is Nothing Then
+            市不在 = 市不在 & "    " & CStr(市名(i)) & vbCrLf
+        End If
+    Next i
+    If Len(市不在) > 0 Then
+        問題 = 問題 & "・市シート一覧 に実在しないシート:" & vbCrLf & 市不在
+    End If
+
+    ' (5) 県/市 両方に重複するシート名
+    Dim 重複 As String
+    For i = LBound(県名) To UBound(県名)
+        For j = LBound(市名) To UBound(市名)
+            If StrComp(CStr(県名(i)), CStr(市名(j)), vbTextCompare) = 0 Then
+                重複 = 重複 & "    " & CStr(県名(i)) & vbCrLf
+                Exit For
+            End If
+        Next j
+    Next i
+    If Len(重複) > 0 Then
+        問題 = 問題 & "・県/市 両方の一覧に存在するシート:" & vbCrLf & 重複
+    End If
+
+    ' 結果表示
+    If Len(問題) = 0 Then
+        MsgBox "設定チェック完了。問題は見つかりませんでした。", vbInformation, "設定チェック"
+    Else
+        MsgBox "以下の問題が見つかりました:" & vbCrLf & vbCrLf & 問題, vbExclamation, "設定チェック"
+    End If
+End Sub
+
+
+'==================================================================
+'  ▼ 提出書類ナビ ― 入力シート H3:K30 にジャンプ用一覧を再生成
+'==================================================================
+Private Sub ナビ再生成(ByVal モード As String)
+    Dim sh As Worksheet
+    On Error Resume Next
+    Set sh = ThisWorkbook.Worksheets(入力シート名)
+    On Error GoTo 0
+    If sh Is Nothing Then Exit Sub
+
+    ' 既存ナビ領域をクリア
+    Dim 範囲 As Range
+    Set 範囲 = sh.Range("H3:K30")
+    範囲.ClearContents
+    Dim hl As Hyperlink, k As Long
+    For k = sh.Hyperlinks.Count To 1 Step -1
+        Set hl = sh.Hyperlinks(k)
+        If Not Intersect(hl.Range, 範囲) Is Nothing Then hl.Delete
+    Next k
+
+    ' モードに応じて表示するリスト/ラベルを決定
+    Dim ラベル As String, 名前一覧 As Variant
+    Select Case モード
+        Case "県"
+            ラベル = "県土木"
+            名前一覧 = 県シート一覧()
+        Case "市"
+            ラベル = "市役所"
+            名前一覧 = 市シート一覧()
+        Case Else
+            Exit Sub  ' 空欄や想定外はクリアだけで終了
+    End Select
+
+    ' 見出し
+    sh.Range("H3").Value = "提出書類ナビ"
+    sh.Range("H4").Value = "現在の提出先: " & ラベル
+
+    ' 対象シート一覧（実在シートのみ、ハイパーリンク付き）
+    Dim 行 As Long, i As Long, 対象 As Worksheet
+    行 = 6  ' H6 から開始
+    For i = LBound(名前一覧) To UBound(名前一覧)
+        Set 対象 = Nothing
+        On Error Resume Next
+        Set 対象 = ThisWorkbook.Worksheets(CStr(名前一覧(i)))
+        On Error GoTo 0
+        If Not 対象 Is Nothing Then
+            sh.Hyperlinks.Add _
+                Anchor:=sh.Cells(行, 8), _
+                Address:="", _
+                SubAddress:="'" & 対象.Name & "'!A1", _
+                TextToDisplay:=対象.Name
+            行 = 行 + 1
+            If 行 > 30 Then Exit For  ' H30 で打ち切り
+        End If
+    Next i
+End Sub
+
+
+'==================================================================
 '  ▼ 切替本体（基本的に編集不要）
 '==================================================================
 Public Sub 県市シート切替(ByVal 値 As String)
@@ -221,6 +383,9 @@ Public Sub 県市シート切替(ByVal 値 As String)
 
     ' (3) 非表示対象を hide（入力シートは常に保護）
     Call シート非表示(非表示)
+
+    ' (4) 提出書類ナビを最新状態に再生成
+    ナビ再生成 値正規化(値)
 
 CleanExit:
     Application.EnableEvents = True
