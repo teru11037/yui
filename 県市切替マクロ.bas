@@ -155,6 +155,8 @@ End Function
 '  ▼ 切替本体（基本的に編集不要）
 '==================================================================
 Public Sub 県市シート切替(ByVal 値 As String)
+    On Error GoTo CleanFail
+
     Dim 表示 As Variant, 非表示 As Variant
 
     Select Case Trim$(値)
@@ -177,8 +179,14 @@ Public Sub 県市シート切替(ByVal 値 As String)
     シート表示切替 表示, True
     シート表示切替 非表示, False
 
+CleanExit:
     Application.EnableEvents = True
     Application.ScreenUpdating = True
+    Exit Sub
+
+CleanFail:
+    MsgBox "シート切替中にエラーが発生しました。" & vbCrLf & Err.Description, vbExclamation, "切替エラー"
+    Resume CleanExit
 End Sub
 
 Private Sub シート表示切替(ByVal 名前一覧 As Variant, ByVal 表示する As Boolean)
