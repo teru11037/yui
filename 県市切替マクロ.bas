@@ -117,9 +117,8 @@ Public Sub 初期設定()
     ' D3 が既に県/市なら ナビも初回生成
     Dim 現値 As String
     現値 = 値正規化(CStr(sh.Range(入力セル).Value))
-    If 現値 = "県" Or 現値 = "市" Then
-        ナビ再生成 現値
-    End If
+    ' D3 が空欄/県/市 のいずれでもナビ初回生成
+    ナビ再生成 現値
 
     Dim msg As String
     msg = "▼ ドロップダウン設置: 完了 (" & sh.Name & "!" & 入力セル & ")" & vbCrLf
@@ -366,27 +365,44 @@ Private Sub ナビ再生成(ByVal モード As String)
         If Not Intersect(hl.Range, 範囲) Is Nothing Then hl.Delete
     Next k
 
-    ' モードに応じて表示するリスト/ラベルを決定
-    Dim ラベル As String, 名前一覧 As Variant
+    ' モードに応じてナビ内容を生成
+    Dim 行 As Long
     Select Case モード
         Case "県"
-            ラベル = "県土木"
-            名前一覧 = 県シート一覧()
+            sh.Range("H3").Value = "提出書類ナビ"
+            sh.Range("H4").Value = "現在の提出先: 県土木"
+            ナビリスト書込 sh, 6, 県シート一覧()
         Case "市"
-            ラベル = "市役所"
-            名前一覧 = 市シート一覧()
+            sh.Range("H3").Value = "提出書類ナビ"
+            sh.Range("H4").Value = "現在の提出先: 市役所"
+            ナビリスト書込 sh, 6, 市シート一覧()
+        Case ""
+            ' 空欄 = 県・市 両方を見出し付きで表示
+            sh.Range("H3").Value = "提出書類ナビ"
+            sh.Range("H4").Value = "現在の提出先: 未選択（県・市 両方表示）"
+            行 = 6
+            sh.Cells(行, 8).Value = "【県土木】"
+            行 = ナビリスト書込(sh, 行 + 1, 県シート一覧())
+            If 行 <= 30 Then
+                sh.Cells(行, 8).Value = "【市役所】"
+                ナビリスト書込 sh, 行 + 1, 市シート一覧()
+            End If
         Case Else
-            Exit Sub  ' 空欄や想定外はクリアだけで終了
+            ' 想定外はクリアだけで終了
     End Select
+End Sub
 
-    ' 見出し
-    sh.Range("H3").Value = "提出書類ナビ"
-    sh.Range("H4").Value = "現在の提出先: " & ラベル
-
-    ' 対象シート一覧（実在シートのみ、ハイパーリンク付き）
+'------------------------------------------------------------------
+'  ナビへハイパーリンク一覧を書き込む共通処理
+'   - 実在しないシートは無視
+'   - 行 30 を超えたら打ち切り
+'   - 戻り値: 次に書き込める行番号
+'------------------------------------------------------------------
+Private Function ナビリスト書込(ByVal sh As Worksheet, ByVal 開始行 As Long, ByVal 名前一覧 As Variant) As Long
     Dim 行 As Long, i As Long, 対象 As Worksheet
-    行 = 6  ' H6 から開始
+    行 = 開始行
     For i = LBound(名前一覧) To UBound(名前一覧)
+        If 行 > 30 Then Exit For
         Set 対象 = Nothing
         On Error Resume Next
         Set 対象 = ThisWorkbook.Worksheets(CStr(名前一覧(i)))
@@ -398,10 +414,10 @@ Private Sub ナビ再生成(ByVal モード As String)
                 SubAddress:="'" & 対象.Name & "'!A1", _
                 TextToDisplay:=対象.Name
             行 = 行 + 1
-            If 行 > 30 Then Exit For  ' H30 で打ち切り
         End If
     Next i
-End Sub
+    ナビリスト書込 = 行
+End Function
 
 
 '==================================================================
@@ -420,7 +436,13 @@ Public Sub 県市シート切替(ByVal 値 As String)
             表示 = 市シート一覧()
             非表示 = 県シート一覧()
         Case ""
-            Exit Sub  ' 空欄は何もしない
+            ' 空欄 = 県・市 両方表示
+            Application.ScreenUpdating = False
+            Application.EnableEvents = False
+            Call シート表示(県シート一覧())
+            Call シート表示(市シート一覧())
+            ナビ再生成 ""
+            GoTo CleanExit
         Case Else
             MsgBox "「県」または「市」を選択してください。", vbExclamation, "入力エラー"
             Exit Sub
