@@ -73,8 +73,9 @@ Public Sub 初期設定()
     Set sh = ThisWorkbook.Worksheets(入力シート名)
     On Error GoTo 0
     If sh Is Nothing Then
-        MsgBox "対象シート「" & 入力シート名 & "」が見つかりません。" & vbCrLf & _
-               "シート名を確認するか、定数『入力シート名』を実際のシート名に合わせて変更してください。", _
+        MsgBox "シート「" & 入力シート名 & "」が見つかりませんでした。" & vbCrLf & _
+               "シートのタブ名が一致しているか確認してください。" & vbCrLf & _
+               "（別の名前で運用したい場合は、このマクロの設置者にご相談ください）", _
                vbExclamation, "シートが見つかりません"
         Exit Sub
     End If
@@ -170,21 +171,20 @@ TrustNG:
     Dim エラー番号 As Long, エラー説明 As String
     エラー番号 = Err.Number
     エラー説明 = Err.Description
-    MsgBox "Worksheet_Change イベントの自動書込みに失敗しました。" & vbCrLf & _
-           "エラー番号: " & エラー番号 & vbCrLf & _
-           "詳細: " & エラー説明 & vbCrLf & vbCrLf & _
-           "原因として多いのは『VBAプロジェクト オブジェクト モデルへのアクセスを信頼する』" & vbCrLf & _
-           "が無効な場合です。以下を確認してください:" & vbCrLf & _
-           "  [ファイル]→[オプション]→[トラストセンター]" & vbCrLf & _
-           "  →[トラストセンターの設定]→[マクロの設定]" & vbCrLf & _
-           "  →『VBAプロジェクト オブジェクト モデルへのアクセスを信頼する』にチェック" & vbCrLf & vbCrLf & _
-           "上記を確認しても解決しない場合は、以下を Sheet1 (" & sh.Name & ") に" & vbCrLf & _
-           "手動で貼り付けてください:" & vbCrLf & vbCrLf & _
+    MsgBox "セットアップの最終ステップ（自動切替の組み込み）を完了できませんでした。" & vbCrLf & vbCrLf & _
+           "Excel 側の設定を 1 つ有効にする必要があります:" & vbCrLf & _
+           "  [ファイル] → [オプション] → [トラストセンター]" & vbCrLf & _
+           "  → [トラストセンターの設定] → [マクロの設定]" & vbCrLf & _
+           "  → 『VBAプロジェクト オブジェクト モデルへのアクセスを信頼する』にチェック" & vbCrLf & vbCrLf & _
+           "チェックを入れて [OK] したあと、もう一度 Alt+F8 から『初期設定』を実行してください。" & vbCrLf & vbCrLf & _
+           "それでも解決しない場合は、下記コードを Sheet1 (" & sh.Name & ") のコード画面に手動で貼り付けてください:" & vbCrLf & vbCrLf & _
            "Private Sub Worksheet_Change(ByVal Target As Range)" & vbCrLf & _
            "    If Intersect(Target, Me.Range(""D3"")) Is Nothing Then Exit Sub" & vbCrLf & _
            "    If Target.Cells.Count > 1 Then Exit Sub" & vbCrLf & _
            "    県市シート切替 CStr(Target.Value)" & vbCrLf & _
-           "End Sub", vbExclamation, "イベント書込みに失敗"
+           "End Sub" & vbCrLf & vbCrLf & _
+           "（技術情報: Err " & エラー番号 & " - " & エラー説明 & "）", _
+           vbExclamation, "セットアップ未完了"
     イベントコード書込 = "未設定（上記の案内を参照）"
 End Function
 
@@ -217,7 +217,8 @@ Public Sub 設定チェック()
     Set 入力sh = ThisWorkbook.Worksheets(入力シート名)
     On Error GoTo 0
     If 入力sh Is Nothing Then
-        問題 = 問題 & "・入力シート「" & 入力シート名 & "」が存在しません。" & vbCrLf
+        問題 = 問題 & "・入力シート「" & 入力シート名 & "」が見つかりません。" & vbCrLf
+        問題 = 問題 & "  → シートのタブ名がマクロの設定値と一致しているか確認してください。" & vbCrLf
     Else
         ' (2) 入力セル と その値
         Dim セル As Range
@@ -226,6 +227,7 @@ Public Sub 設定チェック()
         On Error GoTo 0
         If セル Is Nothing Then
             問題 = 問題 & "・入力セル「" & 入力セル & "」が解釈できません。" & vbCrLf
+            問題 = 問題 & "  → マクロ内の『入力セル』設定（通常は D3）を見直してください。" & vbCrLf
         Else
             Dim 値 As String
             値 = 値正規化(CStr(セル.Value))
@@ -233,14 +235,15 @@ Public Sub 設定チェック()
                 Case "", "県", "市"
                     ' OK
                 Case Else
-                    問題 = 問題 & "・入力セル " & 入力セル & " の値「" & セル.Value & _
-                             "」が想定外です（空欄/県/市 のいずれかにしてください）。" & vbCrLf
+                    問題 = 問題 & "・入力セル " & 入力セル & " の値「" & セル.Value & "」が想定外です。" & vbCrLf
+                    問題 = 問題 & "  → D3 セルの▼から『県』『市』を選ぶか、Delete キーで空欄に戻してください（空欄＝両方表示）。" & vbCrLf
             End Select
         End If
 
         ' (6) 入力シートが表示状態か
         If 入力sh.Visible <> xlSheetVisible Then
-            問題 = 問題 & "・入力シート「" & 入力シート名 & "」が非表示です。表示状態にしてください。" & vbCrLf
+            問題 = 問題 & "・入力シート「" & 入力シート名 & "」が非表示になっています。" & vbCrLf
+            問題 = 問題 & "  → どこかのシートタブ上で右クリック → [再表示] を選んで表示してください。" & vbCrLf
         End If
     End If
 
@@ -257,7 +260,8 @@ Public Sub 設定チェック()
         End If
     Next i
     If Len(県不在) > 0 Then
-        問題 = 問題 & "・県シート一覧 に実在しないシート:" & vbCrLf & 県不在
+        問題 = 問題 & "・県シート一覧 に実在しないシートがあります:" & vbCrLf & 県不在
+        問題 = 問題 & "  → タブ名と一致しているか確認してください（半角/全角・スペース・括弧の有無に注意）。" & vbCrLf
     End If
 
     ' (4) 市シート一覧 の存在チェック
@@ -273,7 +277,8 @@ Public Sub 設定チェック()
         End If
     Next i
     If Len(市不在) > 0 Then
-        問題 = 問題 & "・市シート一覧 に実在しないシート:" & vbCrLf & 市不在
+        問題 = 問題 & "・市シート一覧 に実在しないシートがあります:" & vbCrLf & 市不在
+        問題 = 問題 & "  → タブ名と一致しているか確認してください（半角/全角・スペース・括弧の有無に注意）。" & vbCrLf
     End If
 
     ' (5) 県/市 両方に重複するシート名
@@ -287,7 +292,8 @@ Public Sub 設定チェック()
         Next j
     Next i
     If Len(重複) > 0 Then
-        問題 = 問題 & "・県/市 両方の一覧に存在するシート:" & vbCrLf & 重複
+        問題 = 問題 & "・県シート一覧 と 市シート一覧 の両方に同じシート名があります:" & vbCrLf & 重複
+        問題 = 問題 & "  → どちらか片方の一覧から削除してください。" & vbCrLf
     End If
 
     ' (7) 入力シートの Worksheet_Change イベント確認
@@ -299,7 +305,7 @@ Public Sub 設定チェック()
     If Len(問題) = 0 Then
         MsgBox "設定チェック完了。問題は見つかりませんでした。", vbInformation, "設定チェック"
     Else
-        MsgBox "以下の問題が見つかりました:" & vbCrLf & vbCrLf & 問題, vbExclamation, "設定チェック"
+        MsgBox "以下の点をご確認ください。各項目の『→』が直し方の案内です:" & vbCrLf & vbCrLf & 問題, vbExclamation, "設定チェック"
     End If
 End Sub
 
@@ -324,7 +330,8 @@ Private Function イベント存在確認(ByVal sh As Worksheet) As String
     On Error GoTo TrustNG
 
     If 開始 <= 0 Then
-        結果 = "・入力シートに Worksheet_Change イベントが見つかりません。『初期設定』を再実行してください。" & vbCrLf
+        結果 = "・自動切替の仕掛けが入力シートに見つかりません。" & vbCrLf & _
+               "  → Alt+F8 から『初期設定』を実行し直すと自動で書き込まれます。" & vbCrLf
     Else
         On Error Resume Next
         行数 = CodeMod.ProcCountLines("Worksheet_Change", 0)
@@ -332,7 +339,8 @@ Private Function イベント存在確認(ByVal sh As Worksheet) As String
         Err.Clear
         On Error GoTo TrustNG
         If InStr(本文, "県市シート切替") = 0 Then
-            結果 = "・Worksheet_Change イベント内に 県市シート切替 の呼び出しが見つかりません。" & vbCrLf
+            結果 = "・自動切替の仕掛けが古いままになっているようです。" & vbCrLf & _
+                   "  → VBE で Sheet1 の Worksheet_Change を一度削除してから『初期設定』を再実行してください。" & vbCrLf
         End If
     End If
 
@@ -340,8 +348,10 @@ Private Function イベント存在確認(ByVal sh As Worksheet) As String
     Exit Function
 
 TrustNG:
-    イベント存在確認 = "・Worksheet_Change の確認に失敗（Err " & Err.Number & ": " & Err.Description & "）。" & vbCrLf & _
-                      "    『VBA プロジェクト オブジェクト モデルへのアクセスを信頼する』が無効の可能性があります（イベント有無は未確認）。" & vbCrLf
+    イベント存在確認 = "・自動切替の仕掛けを確認できませんでした（Excel の信頼設定で許可されていない可能性）。" & vbCrLf & _
+                      "  → [ファイル] → [オプション] → [トラストセンター] → [トラストセンターの設定] → [マクロの設定] で" & vbCrLf & _
+                      "    『VBAプロジェクト オブジェクト モデルへのアクセスを信頼する』にチェックして、もう一度お試しください。" & vbCrLf & _
+                      "    （技術情報: Err " & Err.Number & " - " & Err.Description & "）" & vbCrLf
 End Function
 
 
@@ -459,8 +469,10 @@ Public Sub 県市シート切替(ByVal 値 As String)
     可視前 = 表示中シート数()
     非表示見込 = 非表示有効数(非表示)
     If 可視前 - 非表示見込 < 1 Then
-        MsgBox "全シートが非表示になってしまうため、切替を中断しました。" & vbCrLf & _
-               "県/市シート一覧の設定を確認してください。", vbExclamation, "切替中断"
+        MsgBox "切替を中断しました。" & vbCrLf & _
+               "このまま続けると表示できるシートが残らなくなってしまいます。" & vbCrLf & vbCrLf & _
+               "→ Alt+F8 から『設定チェック』を実行すると、原因を一覧表示します。", _
+               vbExclamation, "切替中断"
         GoTo CleanExit
     End If
 
@@ -476,7 +488,8 @@ CleanExit:
     Exit Sub
 
 CleanFail:
-    MsgBox "シート切替中にエラーが発生しました。" & vbCrLf & Err.Description, vbExclamation, "切替エラー"
+    MsgBox "切替中にエラーが発生しました:" & vbCrLf & Err.Description & vbCrLf & vbCrLf & _
+           "Excel を一度閉じて開き直してから、もう一度お試しください。", vbExclamation, "切替エラー"
     Resume CleanExit
 End Sub
 
